@@ -157,11 +157,6 @@ authentication page"
 
     (qtoot--oauth-request-token websocket mastodon-host)))
 
-(defun qtoot ()
-  (interactive)
-  (switch-to-buffer (generate-new-buffer "Toot"))
-  (qtoot-mode 1))
-
 (defun qtoot--pick-mastodon-host ()
   "Pick a mastodon host from `qtoot-mastodon-hosts`"
   (if (= (length qtoot-mastodon-hosts) 1)
@@ -169,6 +164,13 @@ authentication page"
     (completing-read "Pick a mastodon host to post to :"
                      qtoot-mastodon-hosts)))
 
+;;;###autoload
+(defun qtoot ()
+  (interactive)
+  (switch-to-buffer (generate-new-buffer "Toot"))
+  (qtoot-mode 1))
+
+;;;###autoload
 (defun qtoot-toot ()
   (interactive)
   "Toot the current buffer"
@@ -196,7 +198,8 @@ authentication page"
                 (kill-buffer-ask qtoot-buffer))))))
     (qtoot--get-oauth-token)))
 
-(defun qtoot--add-host ()
+;;;###autoload
+(defun qtoot-add-host ()
   (interactive)
   (qtoot--get-oauth-token))
 
