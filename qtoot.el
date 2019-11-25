@@ -64,14 +64,16 @@ buffer margins"
    :on-message on-message
    :on-close (lambda (_websocket) (message "qtoot-oauth websocket closed"))))
 
-(defun qtoot--oauth-fulfill (mastodon-host token)
+(defun qtoot--oauth-fulfill (mastodon-host token &optional callback)
   "Handle oauth token fulfillment"
   (push mastodon-host qtoot-mastodon-hosts)
   (customize-set-variable 'qtoot-mastodon-hosts qtoot-mastodon-hosts)
   (customize-save-variable 'qtoot-mastodon-hosts qtoot-mastodon-hosts)
 
   (if (qtoot--save-token? token)
-      (qtoot--save-token mastodon-host token)))
+      (qtoot--save-token mastodon-host token))
+
+  (if callback (funcall callback mastodon-host token)))
 
 (defun qtoot--oauth-set-id (request-id)
   "Handle request id change by presenting the user with an
@@ -81,7 +83,7 @@ authentication page"
       (kill-new url)
       (message "Please visit %s to authenticate qtoot, url added to kill-ring" url))))
 
-(defun qtoot--oauth-on-message-closure (mastodon-host)
+(defun qtoot--oauth-on-message-closure (mastodon-host &optional callback)
   "Closure to handle websocket messages from the oauth server"
   (let (ID)
     (lambda (_websocket frame)
@@ -99,7 +101,7 @@ authentication page"
 
                 ((string= message-type "fulfill")
                  (let ((token (alist-get 'token (alist-get 'parameters message))))
-                   (qtoot--oauth-fulfill mastodon-host token)))
+                   (qtoot--oauth-fulfill mastodon-host token callback)))
                 
                 (t (message "qtoot: Got unexpected message: %s" message))))))))
 
@@ -127,11 +129,11 @@ authentication page"
                    "for more information about this variable\n")
            token)))
 
-(defun qtoot--oauth-websocket (mastodon-host)
+(defun qtoot--oauth-websocket (mastodon-host &optional callback)
   (qtoot--open-websocket
    qtoot-oauth-host
    qtoot-oauth-port
-   (qtoot--oauth-on-message-closure mastodon-host)))
+   (qtoot--oauth-on-message-closure mastodon-host callback)))
 
 (defmacro qtoot--json-preset (&rest body)
   "Define JSON preset to use when marshalling/unmarshalling json"
@@ -149,20 +151,21 @@ authentication page"
                     . ((host . ,mastodon-host)))))))
       (websocket-send-text websocket json))))
 
-(defun qtoot--get-oauth-token ()
+(defun qtoot--get-oauth-token (&optional callback)
   (require 'websocket)
 
   (let* ((mastodon-host (read-string "Hostname of your mastodon instance :"))
-         (websocket (qtoot--oauth-websocket mastodon-host)))
+         (websocket (qtoot--oauth-websocket mastodon-host callback)))
 
     (qtoot--oauth-request-token websocket mastodon-host)))
 
 (defun qtoot--pick-mastodon-host ()
   "Pick a mastodon host from `qtoot-mastodon-hosts`"
-  (if (= (length qtoot-mastodon-hosts) 1)
-      (car qtoot-mastodon-hosts)
-    (completing-read "Pick a mastodon host to post to :"
-                     qtoot-mastodon-hosts)))
+  (cond ((= (length qtoot-mastodon-hosts) 1)
+         (car qtoot-mastodon-hosts))
+        ((not qtoot-mastodon-hosts) nil)
+        (t (completing-read "Pick a mastodon host to post to :"
+                            qtoot-mastodon-hosts))))
 
 ;;;###autoload
 (defun qtoot ()
@@ -170,33 +173,43 @@ authentication page"
   (switch-to-buffer (generate-new-buffer "Toot"))
   (qtoot-mode 1))
 
+(defun qtoot--post-toot (mastodon-host mastodon-token json-data)
+  "POST toot over HTTP"
+  (let* ((url-request-method "POST")
+         (url-request-data (encode-coding-string (qtoot--json-preset (json-encode json-data)) 'utf-8))
+         (url-request-extra-headers
+          `(("Content-Type" . "application/json")
+            ("Authorization" . ,(concat "Bearer " mastodon-token))))
+         (response (url-retrieve-synchronously (concat "https://" mastodon-host "/api/v1/statuses"))))
+
+    (with-current-buffer (car (with-current-buffer response (mm-dissect-buffer t)))
+      (goto-char (point-min))
+      (let* ((response-json (qtoot--json-preset (json-read)))
+             (err (alist-get 'error response-json)))
+        (list response-json err)))))
+
+(defun qtoot--toot-poster-closure (qtoot-buffer json-data)
+  "Make a closure that posts the toot provided at creation to a
+mastodon host that is provided at execution"
+  (lambda (mastodon-host mastodon-token)
+    (when (yes-or-no-p "Do you want to add a content warning?")
+      (push `(spoiler_text . ,(read-string "Content Warning")) json-data))
+
+    (pcase-let ((`(,response ,err) (qtoot--post-toot mastodon-host mastodon-token json-data)))
+      (if err
+          (message "Got error response from server: %s" err)
+        (kill-buffer-ask qtoot-buffer)))))
+
+
 ;;;###autoload
-(defun qtoot-toot ()
-  (interactive)
+(defun qtoot-toot (mastodon-host qtoot-buffer json-data)
   "Toot the current buffer"
-
-  (if qtoot-mastodon-hosts
-      (let ((qtoot-buffer (current-buffer))
-            (json-data `((status . ,(buffer-string)))))
-        (when (yes-or-no-p "Do you want to add a content warning?")
-          (push `(spoiler_text . ,(read-string "Content Warning")) json-data))
-
-        (let* ((mastodon-host (qtoot--pick-mastodon-host))
-               (url-request-method "POST")
-               (url-request-data (encode-coding-string (qtoot--json-preset (json-encode json-data)) 'utf-8))
-               (url-request-extra-headers
-                `(("Content-Type" . "application/json")
-                  ("Authorization" . ,(concat "Bearer " (qtoot--get-token mastodon-host)))))
-               (response (url-retrieve-synchronously (concat "https://" mastodon-host "/api/v1/statuses"))))
-
-          (with-current-buffer (car (with-current-buffer response (mm-dissect-buffer t)))
-            (goto-char (point-min))
-            (let* ((response-json (qtoot--json-preset (json-read)))
-                  (err (alist-get 'error response-json)))
-              (if err
-                  (message "Got error response from server: %s" err)
-                (kill-buffer-ask qtoot-buffer))))))
-    (qtoot--get-oauth-token)))
+  (interactive `(,(qtoot--pick-mastodon-host) ,(current-buffer) ((status . ,(buffer-string)))))
+  (let ((toot-poster (qtoot--toot-poster-closure qtoot-buffer json-data))
+        (mastodon-token (qtoot--get-token mastodon-host)))
+    (cond (mastodon-token
+           (funcall toot-poster mastodon-host mastodon-token))
+          (t (qtoot--get-oauth-token toot-poster)))))
 
 ;;;###autoload
 (defun qtoot-add-host ()
