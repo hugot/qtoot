@@ -20,7 +20,8 @@
         (add-hook (make-local-variable 'window-configuration-change-hook)
                   'qtoot--window-configuration-change-hook)
         (dolist (window (get-buffer-window-list (current-buffer)))
-          (qtoot-style-window window)))
+          (qtoot-style-window window))
+        (if (require 'emojify nil t) (emojify-mode 1)))
     (progn
       (dolist (window (get-buffer-window-list (current-buffer)))
         (set-window-margins window 0 0)))))
