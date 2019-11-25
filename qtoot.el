@@ -1,5 +1,7 @@
 ;; -*- lexical-binding: t; -*-
 
+(require 'json)
+
 (defvar qtoot-toot-width 56 "Character width of a toot")
 (defvar qtoot-oauth-host "auth.qtoot.libre-it.nl")
 (defvar qtoot-oauth-port 443)
