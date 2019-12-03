@@ -27,5 +27,8 @@ is completely open source and its source code can be found at
 https://github.com/hugot/generic-mastodon-authenticator or
 https://git.code-bloggers.com/hugo/generic-mastodon-authenticator .
 
+## Screenshot
+![Screenshot of qtoot](https://cdn.hugot.nl/random/hahNg6eis9gooTae/Screenshot_2019-12-03_11-14-39.png)
+
 ## Install
 Put qtoot.el somewhere in your load-path and require it. That's all :)
