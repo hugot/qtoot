@@ -21,10 +21,13 @@
       (progn
         (add-hook (make-local-variable 'window-configuration-change-hook)
                   'qtoot--window-configuration-change-hook)
+        (setq-local word-wrap t)
         (dolist (window (get-buffer-window-list (current-buffer)))
           (qtoot-style-window window))
         (if (require 'emojify nil t) (emojify-mode 1)))
     (progn
+      (kill-local-variable 'window-configuration-change-hook)
+      (kill-local-variable 'word-wrap)
       (dolist (window (get-buffer-window-list (current-buffer)))
         (set-window-margins window 0 0)))))
 
