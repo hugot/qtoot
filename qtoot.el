@@ -27,23 +27,31 @@
 (defvar-local qtoot-draft-idle-timer nil
   "Idle timer that saves drafts after a certain idle time. Buffer local.")
 
+(defvar-local qtoot-draft-deleted nil
+  "Whether or not the draft in the current buffer has been
+  deleted from the server after being instructed to do so by the
+  user.")
+
 (defun qtoot--save-on-idle ()
-  (let ((buffer (current-buffer)))
-    (setq qtoot-draft-idle-timer
+  (let ((buffer (current-buffer))
+        (timer))
+    (setq timer
           (run-with-idle-timer
            1
            t
            (lambda ()
              (if (not (buffer-live-p buffer))
-                 (cancel-timer qtoot-draft-idle-timer)
+                 (cancel-timer timer)
                (with-current-buffer buffer
-                 (when (buffer-modified-p buffer)
+                 (when (and (not qtoot-draft-deleted) (buffer-modified-p buffer))
                    (qtoot-draft-save)
-                   (set-buffer-modified-p nil)))))))))
+                   (set-buffer-modified-p nil)))))))
+    (setq qtoot-draft-idle-timer timer)))
 
 (define-minor-mode qtoot-mode "Minor mode to edit toots" nil "Qtoot"
   `((,(kbd "C-c C-c") . qtoot-toot)
-    (,(kbd "C-x 3") . qtoot--split-window-right))
+    (,(kbd "C-x 3") . qtoot--split-window-right)
+    (,(kbd "C-x C-s") . qtoot-draft-save))
   (if qtoot-mode
       (progn
         (add-hook (make-local-variable 'window-configuration-change-hook)
@@ -282,18 +290,14 @@ nextcloud instance that has the notes app installed."
                          (message "[qtoot] Draft saved."))))
             (json-error (message "[qtoot] Error parsing json from buffer: %s" (buffer-string)))))))))
 
-(defun qtoot--serialize-draft-array (draft)
-  (qtoot--json-preset
-   (concat
-    "[" (json-serialize draft) "]")))
-
 (cl-defmethod qtoot--draftc-save-draft ((client qtoot--draftc) draft-name content)
   (let* ((url-request-extra-headers (qtoot--draftc-url-headers client))
          (url-request-method "POST")
-         (url-request-data (qtoot--serialize-draft-array
+         (url-request-data (qtoot--json-preset
+                            (json-serialize
                              `((title . ,draft-name)
                                (content . ,content)
-                               (category . ,qtoot-drafts-category)))))
+                               (category . ,qtoot-drafts-category))))))
     (url-retrieve (qtoot--draftc-endpoint client "/apps/notes/api/v1/notes")
                   (qtoot--handle-draft-saved draft-name 'save)
                   nil t)))
@@ -336,7 +340,9 @@ nextcloud instance that has the notes app installed."
                                   content)
     (qtoot--draftc-save-draft client
                               (format-time-string "%Y, %b %d %H:%M")
-                              content))))
+                              content)
+    )
+  (setq qtoot-draft-deleted nil)))
 
 (defun qtoot-draft-set-name (name)
   (interactive (list (read-string "Draft name: ")))
@@ -376,6 +382,7 @@ nextcloud instance that has the notes app installed."
       (qtoot--draftc-delete-draft client qtoot-draft-id)
       (setq qtoot-draft-id nil)
       (setq qtoot-draft-name nil)
+      (setq qtoot-draft-deleted t)
       (rename-buffer (generate-new-buffer-name "[q] DELETED")))))
 
 ;;;###autoload
