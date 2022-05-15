@@ -15,6 +15,7 @@ Below is a list of planned/completed features
 | Oauth login                               | ✔          |
 | Basic toot                                | ✔          |
 | Toot with Content Warning                 | ✔          |
+| Drafts (Saved to Nextcloud Notes)         | ✔          |
 | Scheduled toot                            | ❌         |
 | Reply to another toot                     | ❌         |
 | Sending a DM                              | ❌         |
