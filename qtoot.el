@@ -124,14 +124,18 @@ buffer margins"
                    "for more information about this variable\n")
            token)))
 
+(defsubst qtoot--json-serialize-utf8 (json)
+  "Serialize a json object and encode the resulting string to UTF-8."
+  (encode-coding-string (qtoot--json-preset (json-serialize json))
+                        'utf-8 t))
 
 (defmacro qtoot--json-preset (&rest body)
   "Define JSON preset to use when marshalling/unmarshalling json"
 
-  (append '(let ((json-array-type 'list)
-                 (json-object-type 'alist)
-                 (json-key-type 'symbol)))
-          body))
+  `(let ((json-array-type 'list)
+         (json-object-type 'alist)
+         (json-key-type 'symbol))
+     ,@body))
 
 (defun qtoot--pick-mastodon-host ()
   "Pick a mastodon host from `qtoot-mastodon-hosts`"
@@ -150,7 +154,7 @@ buffer margins"
 (defun qtoot--post-toot (mastodon-host mastodon-token json-data)
   "POST toot over HTTP"
   (let* ((url-request-method "POST")
-         (url-request-data (encode-coding-string (qtoot--json-preset (json-encode json-data)) 'utf-8))
+         (url-request-data (qtoot--json-serialize-utf8 json-data))
          (url-request-extra-headers
           `(("Content-Type" . "application/json")
             ("Authorization" . ,(concat "Bearer " mastodon-token))))
@@ -293,11 +297,10 @@ nextcloud instance that has the notes app installed."
 (cl-defmethod qtoot--draftc-save-draft ((client qtoot--draftc) draft-name content)
   (let* ((url-request-extra-headers (qtoot--draftc-url-headers client))
          (url-request-method "POST")
-         (url-request-data (qtoot--json-preset
-                            (json-serialize
+         (url-request-data (qtoot--json-serialize-utf8
                              `((title . ,draft-name)
                                (content . ,content)
-                               (category . ,qtoot-drafts-category))))))
+                               (category . ,qtoot-drafts-category)))))
     (url-retrieve (qtoot--draftc-endpoint client "/apps/notes/api/v1/notes")
                   (qtoot--handle-draft-saved draft-name 'save)
                   nil t)))
@@ -305,12 +308,11 @@ nextcloud instance that has the notes app installed."
 (cl-defmethod qtoot--draftc-update-draft ((client qtoot--draftc) draft-id draft-name content)
   (let* ((url-request-extra-headers (qtoot--draftc-url-headers client))
          (url-request-method "PUT")
-         (url-request-data (qtoot--json-preset
-                            (json-serialize
+         (url-request-data (qtoot--json-serialize-utf8
                              `((id . ,draft-id)
                                (title . ,draft-name)
                                (category . ,qtoot-drafts-category)
-                               (content . ,content))))))
+                               (content . ,content)))))
     (url-retrieve (qtoot--draftc-endpoint client (format "/apps/notes/api/v1/notes/%d" draft-id))
                   (qtoot--handle-draft-saved draft-name 'update)
                   nil t)))
